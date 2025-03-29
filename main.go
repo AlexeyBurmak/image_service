@@ -5,7 +5,7 @@ import (
 	"net"
 
 	pb "github.com/AlexeyBurmak/image_service/gen/fileservice"
-
+	"github.com/AlexeyBurmak/image_service/server"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 )
@@ -22,7 +22,7 @@ func main() {
 	})
 
 	grpcServer := grpc.NewServer()
-	srv := NewFileServiceServer("storage/files", rdb)
+	srv := server.NewFileServiceServer("storage/files", rdb)
 	pb.RegisterFileServiceServer(grpcServer, srv)
 
 	log.Println("gRPC server is running on port 50051...")
