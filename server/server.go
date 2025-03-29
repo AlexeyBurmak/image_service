@@ -4,6 +4,7 @@ import (
 	"context"
 
 	pb "github.com/AlexeyBurmak/image_service/gen/fileservice"
+	// "github.com/redis/go-redis"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
