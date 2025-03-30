@@ -6,8 +6,5 @@ all:
 	--go_opt=paths=source_relative --go-grpc_opt=paths=source_relative
 	@echo "Files generated"
 
-cleangen:
-	@rm -rf $(GPATH)*.go
-
 clean:
-	@rm -rf ./storage/files
+	@rm -rf $(GPATH)*.go
