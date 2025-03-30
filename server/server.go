@@ -4,7 +4,7 @@ import (
 	"context"
 
 	pb "github.com/AlexeyBurmak/image_service/gen/fileservice"
-	// "github.com/redis/go-redis"
+
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -19,25 +19,25 @@ type FileServiceServer struct {
 	listQueue     chan *ListFilesTask
 }
 
-func NewFileServiceServer(storagePath string, redisClient *redis.Client) pb.FileServiceServer {
+func NewFileServiceServer(ctx context.Context, storagePath string, redisClient *redis.Client) pb.FileServiceServer {
+	maxUploadDownload := 10
+	maxList := 100
+
 	server := &FileServiceServer{
 		storagePath:   storagePath,
 		redisClient:   redisClient,
-		uploadQueue:   make(chan *UploadTask, 10),
-		downloadQueue: make(chan *DownloadTask, 10),
-		listQueue:     make(chan *ListFilesTask, 100),
+		uploadQueue:   make(chan *UploadTask, maxUploadDownload),
+		downloadQueue: make(chan *DownloadTask, maxUploadDownload),
+		listQueue:     make(chan *ListFilesTask, maxList),
 	}
 
-	for i := 0; i < 10; i++ {
-		go server.uploadWorker()
+	for i := 0; i < maxUploadDownload; i++ {
+		go server.uploadWorker(ctx)
+		go server.downloadWorker(ctx)
 	}
 
-	for i := 0; i < 10; i++ {
-		go server.downloadWorker()
-	}
-
-	for i := 0; i < 100; i++ {
-		go server.listWorker()
+	for i := 0; i < maxList; i++ {
+		go server.listWorker(ctx)
 	}
 
 	return server
@@ -51,7 +51,6 @@ func (s *FileServiceServer) Upload(ctx context.Context, req *pb.UploadRequest) (
 
 	select {
 	case s.uploadQueue <- task:
-		// accepted
 	case <-ctx.Done():
 		return nil, status.Error(codes.DeadlineExceeded, "upload timeout")
 	}
@@ -73,7 +72,6 @@ func (s *FileServiceServer) Download(ctx context.Context, req *pb.DownloadReques
 
 	select {
 	case s.downloadQueue <- task:
-		// accepted
 	case <-ctx.Done():
 		return nil, status.Error(codes.DeadlineExceeded, "download timeout")
 	}
@@ -90,19 +88,18 @@ func (s *FileServiceServer) ListFiles(ctx context.Context, req *pb.ListFilesRequ
 	task := &ListFilesTask{
 		Ctx:     ctx,
 		Req:     req,
-		Result:  make(chan *pb.ListFilesResponse, 1),
+		Resp:    make(chan *pb.ListFilesResponse, 1),
 		ErrChan: make(chan error, 1),
 	}
 
 	select {
 	case s.listQueue <- task:
-		// Task accepted
 	case <-ctx.Done():
 		return nil, status.Error(codes.DeadlineExceeded, "request timeout")
 	}
 
 	select {
-	case res := <-task.Result:
+	case res := <-task.Resp:
 		return res, nil
 	case err := <-task.ErrChan:
 		return nil, err
@@ -110,5 +107,3 @@ func (s *FileServiceServer) ListFiles(ctx context.Context, req *pb.ListFilesRequ
 		return nil, status.Error(codes.DeadlineExceeded, "request timeout")
 	}
 }
-
-// var _ pb.FileServiceServer = (*FileServiceServer)(nil)

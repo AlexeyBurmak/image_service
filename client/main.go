@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	pb "github.com/AlexeyBurmak/image_service/gen/fileservice"
@@ -27,19 +28,22 @@ func main() {
 
 	client := pb.NewFileServiceClient(conn)
 
-	// Загрузка файла
-	err = uploadFile(ctx, client, "test_upload.txt")
-	if err != nil {
-		log.Fatalf("upload failed: %v", err)
+	for i := 1; i <= 15; i++ {
+		fileName := "logo_" + strconv.Itoa(i) + ".jpg"
+		err = uploadFile(ctx, client, fileName)
+		if err != nil {
+			log.Fatalf("upload failed: %v", err)
+		}
 	}
 
-	// Скачивание файла
-	err = downloadFile(ctx, client, "test_upload.txt", "downloaded.txt")
-	if err != nil {
-		log.Fatalf("download failed: %v", err)
+	for i := 1; i <= 15; i++ {
+		fileName := "logo_" + strconv.Itoa(i) + ".jpg"
+		err = downloadFile(ctx, client, fileName)
+		if err != nil {
+			log.Fatalf("download failed: %v", err)
+		}
 	}
 
-	// Получение списка файлов
 	err = listFiles(ctx, client)
 	if err != nil {
 		log.Fatalf("list files failed: %v", err)
@@ -47,41 +51,50 @@ func main() {
 }
 
 func uploadFile(ctx context.Context, client pb.FileServiceClient, path string) error {
-	data, err := os.ReadFile(path)
+	pathUpload := "./client/upload/"
+
+	data, err := os.ReadFile(pathUpload + path)
 	if err != nil {
 		return fmt.Errorf("failed to read file: %w", err)
 	}
-	fmt.Println("Got the file!")
+
+	fileMeta, err := os.Stat(pathUpload + path)
+	if err != nil {
+		return fmt.Errorf("failed to read file's metafata: %w", err)
+	}
+	createdAt := fileMeta.ModTime().Format(time.UnixDate)
 
 	req := &pb.UploadRequest{
-		Filename: path,
-		FileData: data,
+		Filename:  path,
+		FileData:  data,
+		CreatedAt: createdAt,
 	}
 
 	res, err := client.Upload(ctx, req)
 	if err != nil {
 		return fmt.Errorf("upload error: %w", err)
 	}
-	fmt.Println("File Uploaded!")
 
 	fmt.Println("Upload response:", res.GetMessage())
 	return nil
 }
 
-func downloadFile(ctx context.Context, client pb.FileServiceClient, remoteName, localName string) error {
-	req := &pb.DownloadRequest{Filename: remoteName}
+func downloadFile(ctx context.Context, client pb.FileServiceClient, fileName string) error {
+	pathDownload := "./client/download/"
+
+	req := &pb.DownloadRequest{Filename: fileName}
 
 	res, err := client.Download(ctx, req)
 	if err != nil {
 		return fmt.Errorf("download error: %w", err)
 	}
 
-	err = os.WriteFile(localName, res.GetFileData(), 0644)
+	err = os.WriteFile(pathDownload+fileName, res.GetFileData(), 0644)
 	if err != nil {
 		return fmt.Errorf("write file error: %w", err)
 	}
 
-	fmt.Println("Downloaded and saved as:", localName)
+	fmt.Println("Downloaded: ", fileName)
 	return nil
 }
 

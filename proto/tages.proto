@@ -14,6 +14,7 @@ service FileService {
 message UploadRequest {
   string filename = 1;
   bytes file_data = 2;
+  string created_at = 3;
 }
 
 message UploadResponse {

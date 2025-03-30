@@ -37,40 +37,54 @@ type downloadResult struct {
 type ListFilesTask struct {
 	Ctx     context.Context
 	Req     *pb.ListFilesRequest
-	Result  chan *pb.ListFilesResponse
+	Resp    chan *pb.ListFilesResponse
 	ErrChan chan error
 }
 
-func (s *FileServiceServer) uploadWorker() {
-	for task := range s.uploadQueue {
-		resp, err := s.performUpload(task.Req)
-		task.Done <- uploadResult{Resp: resp, Err: err}
+func (s *FileServiceServer) uploadWorker(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case task := <-s.uploadQueue:
+			resp, err := s.performUpload(task.Req)
+			task.Done <- uploadResult{Resp: resp, Err: err}
+		}
 	}
 }
 
-func (s *FileServiceServer) downloadWorker() {
-	for task := range s.downloadQueue {
-		resp, err := s.performDownload(task.Ctx, task.Req)
-		task.Done <- downloadResult{Resp: resp, Err: err}
+func (s *FileServiceServer) downloadWorker(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case task := <-s.downloadQueue:
+			resp, err := s.performDownload(task.Ctx, task.Req)
+			task.Done <- downloadResult{Resp: resp, Err: err}
+		}
 	}
+
 }
 
-func (s *FileServiceServer) listWorker() {
-	ctx := context.Background()
-
-	for task := range s.listQueue {
-		res, err := s.performListFiles(ctx)
-		if err != nil {
-			task.ErrChan <- err
-		} else {
-			task.Result <- res
+func (s *FileServiceServer) listWorker(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case task := <-s.listQueue:
+			res, err := s.performListFiles(ctx)
+			if err != nil {
+				task.ErrChan <- err
+			} else {
+				task.Resp <- res
+			}
 		}
 	}
 }
 
 func (s *FileServiceServer) performUpload(req *pb.UploadRequest) (*pb.UploadResponse, error) {
 	if req.GetFilename() == "" || len(req.GetFileData()) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "filename and file data are required")
+		return nil, status.Error(codes.InvalidArgument, "non-empty filename and file data are required")
 	}
 
 	filePath := filepath.Join(s.storagePath, req.GetFilename())
@@ -78,10 +92,11 @@ func (s *FileServiceServer) performUpload(req *pb.UploadRequest) (*pb.UploadResp
 		return nil, status.Errorf(codes.Internal, "failed to save file: %v", err)
 	}
 
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := time.Now().UTC().Format(time.UnixDate)
 	key := "filemeta:" + req.GetFilename()
+
 	_, err := s.redisClient.HSet(context.Background(), key, map[string]interface{}{
-		"created_at": now,
+		"created_at": req.CreatedAt,
 		"updated_at": now,
 	}).Result()
 	if err != nil {
@@ -89,7 +104,7 @@ func (s *FileServiceServer) performUpload(req *pb.UploadRequest) (*pb.UploadResp
 	}
 
 	return &pb.UploadResponse{
-		Message: "Upload successful",
+		Message: "Uploaded: " + req.Filename,
 	}, nil
 }
 
